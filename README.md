@@ -1,48 +1,47 @@
 # dsh-skiller
 
-> Skill 管理器 for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：在左侧栏管理全部 skill —— 可视化、新建、手动编写、从本地文件/文件夹导入、编辑、删除。
+> 给你的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 配一个技能管理器：左侧栏一个入口，看得到、建得了、改得动全部 skill。
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
 
-在 DeepSeek Harness 的 Web 界面左侧栏加一个「技能管理器」入口。打开后按**当前会话的 agent preset 视图**
-列出所有 skill（项目 / 用户 / custom / bundled / runtime），并可直接新建、编写、导入、编辑、删除本地可写 skill。
+装好之后，Web 界面左侧栏会多一个「技能管理器」图标。点开就是当前会话能看到的所有 skill（项目、用户、custom、内置），可以新建、手写、从本地导入，也能改和删本地可写的那些。以前这些都得自己去磁盘上建目录、写 `SKILL.md`，然后干等目录监听生效。这个插件省掉那步。
 
-## 功能
+## 它能干什么
 
-- 左侧栏入口 + 主面板，按当前会话的 agent preset 视图列出全部 skill。
-- 搜索、来源筛选、详情与正文预览。
-- 新建 / 手动编写 skill（写入 `<root>/<name>/SKILL.md`）。
-- 从本地 `.md` 文件或技能文件夹导入。
-- 编辑 / 删除本地可写 skill（删除需二次确认）。
-- 中英文界面、明暗主题自动跟随；写盘失败、同名冲突、只读来源、目录尚未刷新都会如实显示。
+- 按当前会话的 agent preset 列出 skill，搜索、按来源筛选、展开看正文。
+- 新建或手写 skill，直接写到 `<root>/<name>/SKILL.md`。
+- 导入：单个 `.md` 文件，或者一个现成的技能文件夹。
+- 编辑和删除本地可写 skill。删除要点两次确认，因为删了没法撤销。
+- 中英文界面，跟随明暗主题。写盘失败、同名冲突、来源只读、目录还没刷新，这些情况都照实告诉你，不会假装成功。
 
-## 可写根
+## 能写哪儿
+
+只有这两处：
 
 | 根 | 路径 | 说明 |
 |---|---|---|
-| 项目 | `<projectRoot>/.agents/skills` | `projectRoot` = 最近的含 `.git` 祖先，否则当前 cwd |
-| 用户 | `$DSH_HOME/skills` | 通常 `~/.dsh/skills` |
+| 项目 | `<projectRoot>/.agents/skills` | `projectRoot` 是最近的含 `.git` 祖先目录，没有就用当前 cwd |
+| 用户 | `$DSH_HOME/skills` | 一般是 `~/.dsh/skills` |
 
-`project-dsh`（`.dsh/skills`）、`custom`、`user-agents`、`bundled`、`runtime` 来源的 skill 只读，
-界面会给出具体原因。
+来自 `project-dsh`（`.dsh/skills`）、`custom`、`user-agents`、`bundled`、`runtime` 的 skill 一律只读，界面上会写明原因。
 
 ## 安装
 
-本插件零第三方依赖，直接以本地目录方式安装即可：
+插件没有任何第三方依赖，直接装本地目录就行：
 
 ```powershell
-git clone https://github.com/jharayden/dsh-skiller.git
+git clone https://github.com/ZileiC/dsh-skiller.git
 ```
 
-然后在 DeepSeek Harness 里让 agent 执行：
+然后在 DeepSeek Harness 里让 agent 跑：
 
 ```text
 plugin_manager install_bundle target=<clone 下来的绝对路径>\dsh-skiller
 ```
 
-安装完成（返回 `application: applied`）后刷新页面，左侧栏出现「技能管理器」图标。
+返回 `application: applied` 之后刷新页面，左侧栏就有图标了。
 
-> 需要在 Web/Desktop profile 中运行；宿主代码改动后需完全退出并重开 App 才生效。
+需要在 Web 或 Desktop profile 下用。以后改了宿主代码，得完全退出 App 再重开，只刷新页面不生效。
 
 ## 卸载
 
@@ -50,62 +49,58 @@ plugin_manager install_bundle target=<clone 下来的绝对路径>\dsh-skiller
 plugin_manager remove_bundle target=dsh-skiller
 ```
 
-已创建的 skill 属于用户数据，卸载不会删除它们。
+卸载不会动你已经建好的 skill，那些是你的数据。
 
-## 工作原理（简述）
+## 几个实现上的坑
 
-- **读取**：Web profile 把 `skill-filesystem` 挂在 agent preset 层，因此宿主用
-  `agentPresets.acquireScope(presetId)` + `ctx.skills.snapshot({ cwd, scope })` 读取会话视角下的目录，
-  并用 `compositionInventory()` 判断 preset 是否挂载了 provider。
-- **写入**：只允许写上面两个可写根；按 registry 返回的 realpath `path` 定位，做 realpath 包含检查、
-  `lstat` 拒绝符号链接、`wx` / 非递归 `mkdir` 防覆盖、`mtime` 冲突检测。
-- **frontmatter**：行级重建，保留未知键与注释，不引入 YAML 依赖；写入后用 provider 的目录发现结果
-  判定合法性，失败恢复原文。
-- **刷新**：监听 `skills/change` + 100 ms 轮询（≤2.5 s），超时如实显示「已写入，等待目录刷新」。
+写这个插件的时候踩到的东西，别人想改它大概率也会踩：
 
-## HTTP 契约（宿主半边）
+- **读目录得走 preset scope。** Web profile 把 `skill-filesystem` 从宿主层挪到了各 agent preset 里，所以宿主层直接 `ctx.skills.list()` 只能看到全局那几项，项目目录一个都看不见。正确做法是 `agentPresets.acquireScope(presetId)` 拿到租约，再 `ctx.skills.snapshot({ cwd, scope })`，用完释放。preset 有没有挂 provider 用 `compositionInventory()` 判断。
+- **可写根不能从 skill 路径反推。** catalog 给的 `path` 是 realpath。早先我按它反推用户目录，结果在 `~/.dsh/skills` 里放个指向外面的 symlink，就能把删除操作引到根外去。现在根是写死的，路径先 realpath 再判断是否仍在根内，符号链接直接拒绝。
+- **frontmatter 不引 YAML 依赖。** 编辑时按行重建，未知键和注释原样留着。写得对不对交给 provider 自己判断：写完轮询目录，没被发现就恢复原文。
+- **写盘之后别急着说成功。** registry 没有 TTL，全靠 watcher 失效缓存。实测发现延迟通常在几十到几百毫秒，偶尔更久。所以会监听 `skills/change` 再轮询，超时就老实显示「已写入，等待目录刷新」。
 
-6 条同源 exact 路由。`Host` 必须是 loopback；`Origin`（若浏览器发送）必须同源；写请求要求
-`application/json`；请求体 ≤ 1 MiB，技能正文 ≤ 256 KiB。
+## HTTP 契约
+
+宿主一边是 6 条同源 exact 路由。`Host` 必须是 loopback，浏览器带了 `Origin` 就必须同源；写请求要求 `application/json`；请求体最多 1 MiB，技能正文最多 256 KiB。
 
 | 路由 | 方法 | 说明 |
 |---|---|---|
-| `/api/skill-manager/state` | GET | 视图（preset/cwd/projectRoot）、可写根、全部 skill 摘要、limits、warnings |
-| `/api/skill-manager/detail` | GET | 单个 skill 的正文、frontmatter 快照、`mtimeMs`/`deletePlan` |
-| `/api/skill-manager/create` | POST | 新建 `<root>/<name>/SKILL.md`（同名 409） |
-| `/api/skill-manager/update` | POST | 按 registry 的 `path` 原地重写；`baseMtimeMs` 冲突 409 |
-| `/api/skill-manager/delete` | POST | 二次确认（`confirmName`，必须与 skill 名一致） |
-| `/api/skill-manager/import` | POST | `mode:'file'` 写入上传正文；`mode:'directory'` 复制宿主文件夹 |
+| `/api/skill-manager/state` | GET | 当前视图（preset、cwd、projectRoot）、可写根、全部 skill 摘要、limits、warnings |
+| `/api/skill-manager/detail` | GET | 单个 skill 的正文、frontmatter、`mtimeMs`、删除预览 |
+| `/api/skill-manager/create` | POST | 新建 `<root>/<name>/SKILL.md`，同名返回 409 |
+| `/api/skill-manager/update` | POST | 按 registry 的 `path` 原地重写，`baseMtimeMs` 对不上返回 409 |
+| `/api/skill-manager/delete` | POST | 要传 `confirmName` 且和 skill 名一致 |
+| `/api/skill-manager/import` | POST | `mode:'file'` 写上传正文；`mode:'directory'` 复制宿主文件夹 |
 
-失败体统一 `{ ok:false, error:{ code, message } }`；错误码见 [lib/skills.js](lib/skills.js) 中的 `SkillError`。
+失败统一返回 `{ ok:false, error:{ code, message } }`。错误码都在 [lib/skills.js](lib/skills.js) 的 `SkillError` 里。
 
 ## 安全边界
 
-- 只写两个白名单根，路径经 realpath 归一后必须仍在根内。
-- 同名绝不覆盖；导入/编辑写后若 provider 不接受则回滚。
-- 导入上限：200 文件 / 单文件 2 MiB / 总计 10 MiB / 深度 10，符号链接与特殊文件跳过。
-- 路由无内置鉴权（只接受 loopback Host 与同源 Origin），本机进程仍可调用——与 Harness 其他本地插件同级。
+- 只写两个白名单根，路径 realpath 之后必须还在根里。
+- 同名不覆盖。导入或编辑之后 provider 不认，就回滚。
+- 导入限制：最多 200 个文件、单文件 2 MiB、总共 10 MiB、深度 10 层，符号链接和特殊文件直接跳过。
+- 路由没有鉴权，只认 loopback Host 和同源 Origin。本机其他进程还是能调，这跟 Harness 里其他本地插件一个水平，别指望它当安全边界。
 
-## 开发与验证
+## 开发
 
 ```powershell
 node --check lib/index.js
 node --check lib/skills.js
 node --check lib/client.js
-node test/host-test.mjs     # fake ctx + 临时 DSH_HOME/项目根，124 条断言
-node test/client-test.mjs   # fake loader/React/ctx，99 条断言
+node test/host-test.mjs     # 伪造 ctx + 临时 DSH_HOME/项目根，124 条断言
+node test/client-test.mjs   # 伪造 loader/React/ctx，99 条断言
 ```
 
-测试全部使用 `mkdtemp` 临时目录并在退出时清理，不会触碰真实 `.agents/skills`。
-宿主只 import Node 内置模块，客户端只 `require('react')`。
+测试全在 `mkdtemp` 临时目录里跑，退出时清理，不会碰到你真实的 `.agents/skills`。宿主只用 Node 内置模块，客户端只 `require('react')`。
 
 ## 已知限制
 
-- 技能目录由宿主 watcher 刷新，写入后可能短暂显示「等待目录刷新」；watcher 关闭时会一直停留在该状态。
-- 不提供重命名、回收站、在线市场或自动生成 skill；删除不可恢复。
-- 用户可写根固定为 `$DSH_HOME/skills`；若 profile 配置了非默认 `dshHome`，其用户级技能按只读处理。
-- catalog 返回 realpath：指向可写根之外的 symlink/junction 一律只读；指向根内的 symlink 删除时会删除真实目标并可能留下悬空链接。
-- 已在 DeepSeek Harness 0.2.2-rc.1（Windows desktop profile）验证；其他版本未测试。
+- watcher 没刷新时面板会停在「等待目录刷新」。watcher 要是关着，它就永远是那个状态，这个我没法绕。
+- 不支持重命名，没有回收站，没有在线市场，也不会帮你自动生成 skill。删除不可恢复。
+- 用户可写根写死是 `$DSH_HOME/skills`。如果你的 profile 配置了别的 `dshHome`，那边现有的技能会显示成只读。
+- 指向根内的 symlink，删除时会删掉真实目标，原链接可能变成悬空链接。用 symlink 管理技能的话要注意。
+- 只在 DeepSeek Harness 0.2.2-rc.1（Windows desktop profile）上验证过，其他版本没测。
 
 ## License
 
