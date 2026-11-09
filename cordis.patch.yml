@@ -1,0 +1,6 @@
+# dsh-skiller: one host row plus the package's `dsh.client` declaration.
+# The host half registers the /api/skill-manager/* routes; the browser half
+# registers the left-sidebar entry and its main panel.
+- insert:
+    - id: skill-manager
+      name: dsh-skiller

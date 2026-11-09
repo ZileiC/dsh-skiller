@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# logs and OS junk
+*.log
+npm-debug.log*
+Thumbs.db
+Desktop.ini
+
+# editor / tooling
+.vscode/
+.idea/
+*.swp
+
+# local test artefacts (tests use mkdtemp, this is just a safety net)
+*.tmp
+.tmp-*
+.import-*
